@@ -1,8 +1,9 @@
 use inc::Module::Install;
 
-name ('RT-Extension-LDAPImport');
+RTx('RT-Extension-LDAPImport');
 author ('Kevin Falcone <falcone@bestpractical.com>');
 license('perl');
+abstract('Import RT Users from an LDAP store');
 all_from('lib/RT/Extension/LDAPImport.pm');
 
 requires('Test::More');
