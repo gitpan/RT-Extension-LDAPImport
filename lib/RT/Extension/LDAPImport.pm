@@ -1,6 +1,6 @@
 package RT::Extension::LDAPImport;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use warnings;
 use strict;
@@ -402,7 +402,7 @@ sub _warn {
     my $self = shift;
     my $msg  = shift;
 
-    $RT::Logger->warn($msg);
+    $RT::Logger->warning($msg);
     print STDERR $msg, "\n";
 }
 
