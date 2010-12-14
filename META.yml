@@ -1,13 +1,14 @@
 ---
 abstract: 'Import RT Users from an LDAP store'
 author:
+  - 'Kevin Falcone  C<< <falcone@bestpractical.com> >>'
   - 'Kevin Falcone <falcone@bestpractical.com>'
 build_requires:
   ExtUtils::MakeMaker: 6.42
 configure_requires:
   ExtUtils::MakeMaker: 6.42
 distribution_type: module
-generated_by: 'Module::Install version 0.91'
+generated_by: 'Module::Install version 1.00'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -17,11 +18,14 @@ no_index:
   directory:
     - inc
     - t
+recommends:
+  Net::LDAP::Server::Test: 0
 requires:
   Class::Accessor: 0
   Net::LDAP: 0
+  Net::LDAP::Server::Test: 0
   RT: 3.6.3
   Test::More: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.07
+version: 0.31_01

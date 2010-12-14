@@ -1,0 +1,48 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+BEGIN {
+### after:     use lib qw(@RT_LIB_PATH@);
+use lib '/opt/rt3/local/lib /opt/rt3/lib';
+use RT;
+RT::LoadConfig;
+RT::Init;
+}
+
+use RT::Extension::LDAPImport;
+
+my ($debug,$import,$help);
+use Getopt::Long;
+GetOptions ( "debug" => \$debug, "help" => \$help, "import" => \$import );
+if ($help) {
+   print <<USAGE;
+$0: [--debug] [--import] [--help]
+     --help           This usage statement.
+     --debug          Enable debugging.
+     --import         Do the import.
+USAGE
+   exit 0;
+}
+
+my $importer = RT::Extension::LDAPImport->new;
+$importer->screendebug(1) if $debug;
+
+if ($import) {
+    print "Starting import\n";
+    $importer->import_users(import => 1);
+    print "Starting group import\n";
+    $importer->import_groups(import => 1);
+    print "Finished import\n";
+} else {
+    print <<TESTING;
+Running test import, no data will be changed
+Rerun command with --import to perform the import
+Rerun command with --debug for more information
+TESTING
+    $importer->import_users;
+    print "Testing group import\n";
+    $importer->import_groups();
+    print "Finished test\n";
+}

@@ -1,20 +1,29 @@
-bin/rtldapimport
+bin/rtldapimport.in
 Changes
+inc/Module/AutoInstall.pm
 inc/Module/Install.pm
+inc/Module/Install/AutoInstall.pm
 inc/Module/Install/Base.pm
 inc/Module/Install/Can.pm
 inc/Module/Install/Fetch.pm
+inc/Module/Install/Include.pm
 inc/Module/Install/Makefile.pm
 inc/Module/Install/Metadata.pm
 inc/Module/Install/RTx.pm
 inc/Module/Install/Substitute.pm
 inc/Module/Install/Win32.pm
 inc/Module/Install/WriteAll.pm
+INSTALL.SKIP
 lib/RT/Extension/LDAPImport.pm
 Makefile.PL
 MANIFEST
+MANIFEST.SKIP
 META.yml			# Will be created by "make dist"
 README
 t/00.load.t
+t/group-import.t
+t/lib/RT/Extension/LDAPImport/Test.pm.in
 t/pod-coverage.t
 t/pod.t
+t/user-import.t
+SIGNATURE                                Public-key signature (added by MakeMaker)

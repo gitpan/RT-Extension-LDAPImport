@@ -1,11 +1,11 @@
 package RT::Extension::LDAPImport;
 
-our $VERSION = '0.07';
+our $VERSION = '0.31_01';
 
 use warnings;
 use strict;
 use base qw(Class::Accessor);
-__PACKAGE__->mk_accessors(qw(_ldap _group screendebug));
+__PACKAGE__->mk_accessors(qw(_ldap _group screendebug _dnlist));
 use Carp;
 use Net::LDAP;
 use Data::Dumper;
@@ -67,48 +67,63 @@ sub connect_ldap {
 
 }
 
-=head2 run_search
+=head2 run_user_search
 
-Executes a search using the RT::LDAPFilter and RT::LDAPBase
-options.
+Set up the appropriate arguments for a listing of users
 
-LDAPBase is the DN to look under
-LDAPFilter is how you want to restrict the users coming back
+=cut
+
+sub run_user_search {
+    my $self = shift;
+    $self->_run_search(
+        base   => $RT::LDAPBase,
+        filter => $RT::LDAPFilter
+    );
+
+}
+
+=head2 _run_search
+
+Executes a search using the provided base and filter
 
 Will connect to LDAP server using connect_ldap
 
 =cut
 
-sub run_search {
+sub _run_search {
     my $self = shift;
     my $ldap = $self->_ldap||$self->connect_ldap;
+    my %args = @_;
 
     unless ($ldap) {
         $self->_error("fetching an LDAP connection failed");
         return;
     }
 
-    $self->_debug("searching with base => '$RT::LDAPBase' filter => '$RT::LDAPFilter'");
+    $self->_debug("searching with base => '$args{base}' filter => '$args{filter}'");
 
-    my $result = $ldap->search( base => $RT::LDAPBase,
-                                filter => $RT::LDAPFilter );
+    my $result = $ldap->search( base => $args{base},
+                                filter => $args{filter} );
 
     if ($result->code) {
         $self->_error("LDAP search failed " . $result->error);
         return;
     }
 
-    $self->_debug("search found ".$result->count." users");
+    $self->_debug("search found ".$result->count." objects");
     return $result;
 
 }
 
-=head2 import_users
+=head2 import_users import => 1|0
 
 Takes the results of the search from run_search
 and maps attributes from LDAP into RT::User attributes
 using $RT::LDAPMapping.
 Creates RT users if they don't already exist.
+
+With no arguments, only prints debugging information.
+Pass import => 1 to actually change data.
 
 RT::LDAPMapping should be set in your RT_SiteConfig
 file and looks like this.
@@ -134,29 +149,78 @@ together with a single space.
 
 sub import_users {
     my $self = shift;
+    my %args = @_;
 
-    my $results = $self->run_search;
+    my $results = $self->run_user_search;
     unless ( $results && $results->count ) {
         $self->_debug("No results found, no import");
         $self->disconnect_ldap;
         return;
     }
 
-    return unless $self->_check_ldap_mapping;
+    my $mapping = $RT::LDAPMapping;
+    return unless $self->_check_ldap_mapping( mapping => $mapping );
 
+    $self->_dnlist({});
+
+    my $done = 0; my $count = $results->count;
     while (my $entry = $results->shift_entry) {
-        my $user = $self->_build_user( ldap_entry => $entry );
+        my $user = $self->_build_object( ldap_entry => $entry, skip => qr/(?i)^CF\./, mapping => $mapping );
         $user->{Name} ||= $user->{EmailAddress};
         unless ( $user->{Name} ) {
             $self->_warn("No Name or Emailaddress for user, skipping ".Dumper $user);
             next;
         }
-        $self->_debug("Creating user $user->{Name}");
-        #$self->_debug(Dumper $user);
-        my $user_obj = $self->create_rt_user( user => $user );
-        $self->add_user_to_group( user => $user_obj );
-        $self->add_custom_field_value( user => $user_obj, ldap_entry => $entry );
+        $self->_import_user( user => $user, ldap_entry => $entry, import => $args{import} );
+        $done++;
+        $self->_debug("Imported $done/$count users");
     }
+    return 1;
+}
+
+=head2 _import_user
+
+The user has run us with --import, so bring data in
+
+=cut
+
+sub _import_user {
+    my $self = shift;
+    my %args = @_;
+
+    $self->_debug("Processing user $args{user}{Name}");
+    $self->_dnlist->{lc $args{ldap_entry}->dn} = $args{user}{Name};
+
+    $args{user} = $self->create_rt_user( %args );
+    return unless $args{user};
+
+    $self->add_user_to_group( %args );
+    $self->add_custom_field_value( %args );
+
+    return 1;
+}
+
+sub _show_user_info {
+    my $self = shift;
+    my %args = @_;
+    my $user = $args{user};
+    my $rt_user = $args{rt_user};
+
+    return unless $self->screendebug;
+
+    print "\tRT Field\tRT Value -> LDAP Value\n";
+    foreach my $key (sort keys %$user) {
+        my $old_value;
+        if ($rt_user) {
+            eval { $old_value = $rt_user->$key() };
+            if ($user->{$key} && $old_value eq $user->{$key}) {
+                $old_value = 'unchanged';
+            }
+        }
+        $old_value ||= 'unset';
+        print "\t$key\t$old_value => $user->{$key}\n";
+    }
+    #$self->_debug(Dumper($user));
 }
 
 =head2 _check_ldap_mapping
@@ -169,10 +233,12 @@ ldap if there is no mapping.
 
 sub _check_ldap_mapping {
     my $self = shift;
+    my %args = @_;
+    my $mapping = $args{mapping};
 
-    my @rtfields = keys %{$RT::LDAPMapping||{}};
+    my @rtfields = keys %{$mapping};
     unless ( @rtfields ) {
-        $self->_error("No mapping found in RT::LDAPMapping, can't import");
+        $self->_error("No mapping found, can't import");
         $self->disconnect_ldap;
         return;
     }
@@ -180,21 +246,22 @@ sub _check_ldap_mapping {
     return 1;
 }
 
-=head2 _build_user 
+=head2 _build_object
 
-Builds up user data from LDAP for importing
+Builds up data from LDAP for importing
 Returns a hash of user data ready for RT::User::Create
 
 =cut
 
-sub _build_user {
+sub _build_object {
     my $self = shift;
     my %args = @_;
+    my $mapping = $args{mapping};
 
-    my $user = {};
-    foreach my $rtfield ( keys %{$RT::LDAPMapping} ) {
-        next if $rtfield =~ /^CF\./i;
-        my $ldap_attribute = $RT::LDAPMapping->{$rtfield};
+    my $object = {};
+    foreach my $rtfield ( keys %{$mapping} ) {
+        next if $rtfield =~ $args{skip};
+        my $ldap_attribute = $mapping->{$rtfield};
 
         my @attributes = $self->_parse_ldap_mapping($ldap_attribute);
         unless (@attributes) {
@@ -208,10 +275,10 @@ sub _build_user {
             # this may want to be configurable
             push @values, scalar $args{ldap_entry}->get_value($attribute);
         }
-        $user->{$rtfield} = join(' ',@values); 
+        $object->{$rtfield} = join(' ',grep {defined} @values);
     }
 
-    return $user;
+    return $object;
 }
 
 =head3 _parse_ldap_map
@@ -259,9 +326,61 @@ If the $LDAPUpdateUsers variable is true, data in RT
 will be clobbered with data in LDAP.  Otherwise we
 will skip to the next user.
 
+If $LDAPUpdateOnly is true, we will not create new users
+but we will update existing ones.
+
 =cut
 
 sub create_rt_user {
+    my $self = shift;
+    my %args = @_;
+    my $user = $args{user};
+
+    my $user_obj = $self->_load_rt_user(%args);
+
+    if ($user_obj->Id) {
+        my $message = "User $user->{Name} already exists as ".$user_obj->Id;
+        if ($RT::LDAPUpdateUsers || $RT::LDAPUpdateOnly) {
+            $self->_debug("$message, updating their data");
+            if ($args{import}) {
+                my @results = $user_obj->Update( ARGSRef => $user, AttributesRef => [keys %$user] );
+                $self->_debug(join("\n",@results)||'no change');
+            } else {
+                $self->_debug("Found existing user $user->{Name} to update");
+                $self->_show_user_info( %args, rt_user => $user_obj );
+            }
+        } else {
+            $self->_debug("$message, skipping");
+        }
+    } else {
+        if ( $RT::LDAPUpdateOnly ) {
+            $self->_debug("User $user->{Name} doesn't exist in RT, skipping");
+            return;
+        } else {
+            if ($args{import}) {
+                my ($val, $msg) = $user_obj->Create( %$user, Privileged => 0 );
+
+                unless ($val) {
+                    $self->_error("couldn't create user_obj for $user->{Name}: $msg");
+                    return;
+                }
+                $self->_debug("Created user for $user->{Name} with id ".$user_obj->Id);
+            } else {
+                print "Found new user $user->{Name} to create in RT\n";
+                $self->_show_user_info( %args );
+                return;
+            }
+        }
+    }
+
+    unless ($user_obj->Id) {
+        $self->_error("We couldn't find or create $user->{Name}. This should never happen");
+    }
+    return $user_obj;
+
+}
+
+sub _load_rt_user {
     my $self = shift;
     my %args = @_;
     my $user = $args{user};
@@ -273,36 +392,14 @@ sub create_rt_user {
         $user_obj->LoadByEmail( $user->{EmailAddress} );
     }
 
-    if ($user_obj->Id) {
-        my $message = "User $user->{Name} already exists as ".$user_obj->Id;
-        if ($RT::LDAPUpdateUsers) {
-            $self->_debug("$message, updating their data");
-            my @results = $user_obj->Update( ARGSRef => $user, AttributesRef => [keys %$user] );
-            $self->_debug(join(':',@results||'no change'));
-        } else {
-            $self->_debug("$message, skipping");
-        }
-    } else {
-        my ($val, $msg) = $user_obj->Create( %$user, Privileged => 0 );
-
-        unless ($val) {
-            $self->_error("couldn't create user_obj for $user->{Name}: $msg");
-            return;
-        }
-        $self->_debug("Created user for $user->{Name} with id ".$user_obj->Id);
-    }
-
-    unless ($user_obj->Id) {
-        $self->_error("We couldn't find or create $user->{Name}. This should never happen");
-    }
     return $user_obj;
-
 }
 
 =head2 add_user_to_group
 
 Adds new users to the group specified in the $LDAPGroupName
 variable (defaults to 'Imported from LDAP')
+You can avoid this if you set $LDAPSkipAutogeneratedGroup
 
 =cut
 
@@ -310,6 +407,8 @@ sub add_user_to_group {
     my $self = shift;
     my %args = @_;
     my $user = $args{user};
+
+    return if $RT::LDAPSkipAutogeneratedGroup;
 
     my $group = $self->_group||$self->setup_group;
 
@@ -320,14 +419,18 @@ sub add_user_to_group {
         return;
     }
 
-    my ($status, $msg) = $group->AddMember($principal->Id);
-    if ($status) {
-        $self->_debug("Added ".$user->Name." to ".$group->Name." [$msg]");
+    if ($args{import}) {
+        my ($status, $msg) = $group->AddMember($principal->Id);
+        if ($status) {
+            $self->_debug("Added ".$user->Name." to ".$group->Name." [$msg]");
+        } else {
+            $self->_error("Couldn't add ".$user->Name." to ".$group->Name." [$msg]");
+        }
+        return $status;
     } else {
-        $self->_error("Couldn't add ".$user->Name." to ".$group->Name." [$msg]");
+        $self->_debug("Would add to ".$group->Name);
+        return;
     }
-
-    return $status;
 }
 
 =head2 setup_group
@@ -403,17 +506,314 @@ sub add_custom_field_value {
             next;
         }
 
-        ($status, $msg) = $cf->AddValue( Name => $cfv_name );
-        if ($status) {
-            $self->_debug("Added '$cfv_name' to Custom Field '$cf_name' [$msg]");
+        if ($args{import}) {
+            ($status, $msg) = $cf->AddValue( Name => $cfv_name );
+            if ($status) {
+                $self->_debug("Added '$cfv_name' to Custom Field '$cf_name' [$msg]");
+            } else {
+                $self->_error("Couldn't add '$cfv_name' to '$cf_name' [$msg]");
+            }
         } else {
-            $self->_error("Couldn't add '$cfv_name' to '$cf_name' [$msg]");
+            $self->_debug("Would add '$cfv_name' to Custom Field '$cf_name'");
         }
     }
 
     return;
 
 }
+
+=head2 import_groups import => 1|0
+
+Takes the results of the search from run_group_search
+and maps attributes from LDAP into RT::Group attributes
+using $RT::LDAPGroupMapping.
+
+Creates groups if they don't exist
+
+Removes users from groups if they have been removed from the group on LDAP
+
+With no arguments, only prints debugging information.
+Pass import => 1 to actually change data.
+
+=cut
+
+sub import_groups {
+    my $self = shift;
+    my %args = @_;
+
+    my $results = $self->run_group_search;
+    unless ( $results && $results->count ) {
+        $self->_debug("No results found, no group import");
+        $self->disconnect_ldap;
+        return;
+    }
+
+    my $mapping = $RT::LDAPGroupMapping;
+    return unless $self->_check_ldap_mapping( mapping => $mapping );
+
+    my $done = 0; my $count = $results->count;
+    while (my $entry = $results->shift_entry) {
+        my $group = $self->_build_object( ldap_entry => $entry, skip => qr/(?i)^Member_Attr/, mapping => $mapping );
+        $group->{Description} ||= 'Imported from LDAP';
+        unless ( $group->{Name} ) {
+            $self->_warn("No Name for group, skipping ".Dumper $group);
+            next;
+        }
+        $self->_import_group( %args, group => $group, ldap_entry => $entry );
+        $done++;
+        $self->_debug("Imported $done/$count groups");
+    }
+    return 1;
+}
+
+=head3 run_group_search
+
+Set up the approviate arguments for a listing of users
+
+=cut
+
+sub run_group_search {
+    my $self = shift;
+
+    unless ($RT::LDAPGroupBase && $RT::LDAPGroupFilter) {
+        $self->_warn("Not running a group import, configuration not set");
+        return;
+    }
+    $self->_run_search(
+        base   => $RT::LDAPGroupBase,
+        filter => $RT::LDAPGroupFilter
+    );
+
+}
+
+
+=head2 _import_group
+
+The user has run us with --import, so bring data in
+
+=cut
+
+sub _import_group {
+    my $self = shift;
+    my %args = @_;
+    my $group = $args{group};
+    my $ldap_entry = $args{ldap_entry};
+
+    $self->_debug("Processing group $group->{Name}");
+    my $group_obj = $self->create_rt_group( %args, group => $group );
+    return if $args{import} and not $group_obj;
+    $self->add_group_members( %args, name => $group->{Name}, group => $group_obj, ldap_entry => $ldap_entry );
+    return;
+}
+
+=head2 create_rt_group
+
+Takes a hashref of args to pass to RT::Group::Create
+Will try loading the group and will only create a new
+group if it can't find an existing group with the Name
+or EmailAddress arg passed in.
+
+If $LDAPUpdateOnly is true, we will not create new groups
+but we will update existing ones.
+
+There is currently no way to prevent Group data from being
+clobbered from LDAP.
+
+=cut
+
+sub create_rt_group {
+    my $self = shift;
+    my %args = @_;
+    my $group = $args{group};
+
+    my $group_obj = RT::Group->new($RT::SystemUser);
+    $group_obj->LoadUserDefinedGroup( $group->{Name} );
+
+    if ($group_obj->Id) {
+        my $message = "Group $group->{Name} already exists as ".$group_obj->Id;
+        if ($args{import}) {
+            $self->_debug("$message, updating their data");
+            my @results = $group_obj->Update( ARGSRef => $group, AttributesRef => [keys %$group] );
+            $self->_debug(join("\n",@results)||'no change');
+        } else {
+            print "Found existing group $group->{Name} to update\n";
+            $self->_show_group_info( %args, rt_group => $group_obj );
+        }
+    } else {
+        if ( $RT::LDAPUpdateOnly ) {
+            $self->_debug("Group $group->{Name} doesn't exist in RT, skipping");
+            return;
+        }
+
+        if ($args{import}) {
+            my ($val, $msg) = $group_obj->CreateUserDefinedGroup( %$group );
+            unless ($val) {
+                $self->_error("couldn't create group_obj for $group->{Name}: $msg");
+                return;
+            }
+            $self->_debug("Created group for $group->{Name} with id ".$group_obj->Id);
+        } else {
+            print "Found new group $group->{Name} to create in RT\n";
+            $self->_show_group_info( %args );
+            return;
+        }
+    }
+
+    unless ($group_obj->Id) {
+        $self->_error("We couldn't find or create $group->{Name}. This should never happen");
+    }
+    return $group_obj;
+
+}
+
+=head3 add_group_members
+
+Iterate over the list of DNs in the Member_Attr LDAP entry.
+Look up the appropriate username from LDAP.
+Add those users to the group.
+Remove members of the RT Group who are no longer members
+of the LDAP group.
+
+=cut
+
+sub add_group_members {
+    my $self = shift;
+    my %args = @_;
+    my $group = $args{group};
+    my $groupname = $args{name};
+    my $ldap_entry = $args{ldap_entry};
+
+    $self->_debug("Processing group membership for $groupname");
+
+    my $members = $self->_get_group_members_from_ldap(%args);
+
+    unless (defined $members) {
+        $self->_warn("No members found for $groupname in Member_Attr");
+        return;
+    }
+
+    my $rt_group_members = {};
+    if ($args{group}) {
+        my $user_members = $group->UserMembersObj( Recursively => 0);
+        while ( my $member = $user_members->Next ) {
+            $rt_group_members->{$member->Name}++;
+        }
+    } elsif (not $args{import}) {
+        $self->_debug("No group in RT, would create with members:");
+    }
+
+    my $dnlist = $self->_dnlist;
+    foreach my $member (@$members) {
+        my $username;
+        if (exists $dnlist->{lc $member}) {
+            next unless $username = $dnlist->{lc $member};
+        } else {
+            my $ldap_users = $self->_run_search(
+                base   => $member,
+                filter => $RT::LDAPFilter,
+            );
+            unless ( $ldap_users && $ldap_users->count ) {
+                $dnlist->{lc $member} = undef;
+                $self->_error("No user found for $member who should be a member of $groupname");
+                next;
+            }
+            my $ldap_user = $ldap_users->shift_entry;
+            $dnlist->{lc $member} = $username = $ldap_user->get_value($RT::LDAPMapping->{Name});
+        }
+        if ( delete $rt_group_members->{$username} ) {
+            $self->_debug("\t$username\tin RT and LDAP");
+            next;
+        }
+        $self->_debug($group ? "\t$username\tin LDAP, adding to RT" : "\t$username");
+        next unless $args{import};
+
+        my $rt_user = RT::User->new($RT::SystemUser);
+        my ($res,$msg) = $rt_user->Load( $username );
+        unless ($res) {
+            $self->_warn("Unable to load $username: $msg");
+            next;
+        }
+        ($res,$msg) = $group->AddMember($rt_user->PrincipalObj->Id);
+        unless ($res) {
+            $self->_warn("Failed to add $username to $groupname: $msg");
+        }
+    }
+
+    for my $username (sort keys %$rt_group_members) {
+        $self->_debug("\t$username\tin RT, not in LDAP, removing");
+        next unless $args{import};
+
+        my $rt_user = RT::User->new($RT::SystemUser);
+        my ($res,$msg) = $rt_user->Load( $username );
+        unless ($res) {
+            $self->_warn("Unable to load $username: $msg");
+            next;
+        }
+        ($res,$msg) = $group->DeleteMember($rt_user->PrincipalObj->Id);
+        unless ($res) {
+            $self->_warn("Failed to remove $username to $groupname: $msg");
+        }
+    }
+}
+
+sub _get_group_members_from_ldap {
+    my $self = shift;
+    my %args = @_;
+    my $ldap_entry = $args{ldap_entry};
+
+    my $mapping = $RT::LDAPGroupMapping;
+
+    my $members = $ldap_entry->get_value($mapping->{Member_Attr}, asref => 1);
+}
+
+
+=head2 _show_group
+
+Show debugging information about the group record we're going to import
+when the groups reruns us with --import
+
+=cut
+
+sub _show_group {
+    my $self = shift;
+    my %args = @_;
+    my $group = $args{group};
+
+    my $rt_group = RT::Group->new($RT::SystemUser);
+    $rt_group->LoadUserDefinedGroup( $group->{Name} );
+
+    if ( $rt_group->Id ) {
+        print "Found existing group $group->{Name} to update\n";
+        $self->_show_group_info( %args, rt_group => $rt_group );
+    } else {
+        print "Found new group $group->{Name} to create in RT\n";
+        $self->_show_group_info( %args );
+    }
+}
+
+sub _show_group_info {
+    my $self = shift;
+    my %args = @_;
+    my $group = $args{group};
+    my $rt_group = $args{rt_group};
+
+    return unless $self->screendebug;
+
+    print "\tRT Field\tRT Value -> LDAP Value\n";
+    foreach my $key (sort keys %$group) {
+        my $old_value;
+        if ($rt_group) {
+            eval { $old_value = $rt_group->$key() };
+            if ($group->{$key} && $old_value eq $group->{$key}) {
+                $old_value = 'unchanged';
+            }
+        }
+        $old_value ||= 'unset';
+        print "\t$key\t$old_value => $group->{$key}\n";
+    }
+}
+
+
 =head3 disconnect_ldap
 
 Disconnects from the LDAP server
