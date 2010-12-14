@@ -14,12 +14,12 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 c623c222e0947753d09eabdd3803e498e0ab8653 Changes
+SHA1 df73432b69ed58a4f5d44f794dfb3beaed439a8e Changes
 SHA1 b92dc35693c93036ce43b7c57cf8ee7afc239927 INSTALL.SKIP
 SHA1 c934f58249874d1bd2a018db3649f879b90d38f4 MANIFEST
 SHA1 a86273ad1988d2a786d8a7e291a8e8b9344cdee3 MANIFEST.SKIP
-SHA1 d321dee46e5984a6ddb45f2b0b77c8e37206647a META.yml
-SHA1 8e70e2935fd2cfa28fa1c4cea25b8d3d7bddab3f Makefile.PL
+SHA1 32360d41e33bd3e9ef89ab77ce51864696b089fe META.yml
+SHA1 ad3d42dbfa7013431aaa53eaf189fe76656e4576 Makefile.PL
 SHA1 22bdd070298b15b71b2b068b8fd0a0e2650b6731 README
 SHA1 2e642cc66473e126409cabd1c4752acb75d65cf0 bin/rtldapimport.in
 SHA1 20c73697e1713638140c719d8eaa19a275ed43a5 inc/Module/AutoInstall.pm
@@ -31,11 +31,11 @@ SHA1 bf0a3e1977effc2832d7a813a76dce3f31b437b6 inc/Module/Install/Fetch.pm
 SHA1 b501b0df59a5cd235cca473889f82c3d3429f39e inc/Module/Install/Include.pm
 SHA1 b721c93ca5bc9a6aa863b49af15f1b1de6125935 inc/Module/Install/Makefile.pm
 SHA1 026cc0551a0ad399d195e395b46bdf842e115192 inc/Module/Install/Metadata.pm
-SHA1 4baed223a073118d41e8b61056e434637fef6d99 inc/Module/Install/RTx.pm
+SHA1 ba50c80e314233e8143becceabba939de9b3708a inc/Module/Install/RTx.pm
 SHA1 13c903897bad7f0fdd7871a4a0182ff62dfbefd5 inc/Module/Install/Substitute.pm
 SHA1 5457015ea5a50e93465bf2dafa29feebd547f85b inc/Module/Install/Win32.pm
 SHA1 051e7fa8063908befa3440508d0584a2497b97db inc/Module/Install/WriteAll.pm
-SHA1 40205e74a892daee9767d2ce0cdfc67b63bf23e6 lib/RT/Extension/LDAPImport.pm
+SHA1 1baefc96984dd8893bb9b8b251c39ac416600bdc lib/RT/Extension/LDAPImport.pm
 SHA1 ca16acd585a375f0a8f138e18ccb10bf17df9697 t/00.load.t
 SHA1 507637953446bfd0f90928026a60f84754c1655f t/group-import.t
 SHA1 fb5f010101d5901f0e1dd9ac30e841f40324b887 t/lib/RT/Extension/LDAPImport/Test.pm.in
@@ -45,7 +45,7 @@ SHA1 556a4d23a116305882d162d22c4530951fce24c0 t/user-import.t
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.10 (Darwin)
 
-iEYEARECAAYFAk0Hrn4ACgkQ0+gKWp5CJQpojQCfTCZxIHspFuDMdPf+xke7zjGj
-NCAAoIK8WOfbAVzAYBZHXaSGo+wfctFH
-=g8NI
+iEYEARECAAYFAk0H1DUACgkQ0+gKWp5CJQq3aACgkBrUbCMNCgUmJHdnInjHdFiO
+yxEAn3Aj46Hh9RYLteMNuB+oOtTKUkiJ
+=zcLi
 -----END PGP SIGNATURE-----
