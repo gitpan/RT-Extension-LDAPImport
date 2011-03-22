@@ -1,6 +1,6 @@
 package RT::Extension::LDAPImport;
 
-our $VERSION = '0.31_03';
+our $VERSION = '0.31';
 
 use warnings;
 use strict;
@@ -145,6 +145,9 @@ If it is a scalar, the value will be looked up in LDAP.
 If it is an arrayref, the values will be concatenated 
 together with a single space.
 
+By default users are created as Unprivileged, but you can change this by
+setting $LDAPCreatePrivileged to 1.
+
 =cut
 
 sub import_users {
@@ -169,6 +172,10 @@ sub import_users {
         $user->{Name} ||= $user->{EmailAddress};
         unless ( $user->{Name} ) {
             $self->_warn("No Name or Emailaddress for user, skipping ".Dumper $user);
+            next;
+        }
+        if ( $user->{Name} =~ /^[0-9]+$/) {
+            $self->_warn("Skipping user '$user->{Name}', as it is numeric");
             next;
         }
         $self->_import_user( user => $user, ldap_entry => $entry, import => $args{import} );
@@ -281,7 +288,7 @@ sub _build_object {
     return $object;
 }
 
-=head3 _parse_ldap_map
+=head3 _parse_ldap_mapping
 
 Internal helper function for import_user
 If we're passed an arrayref, it will recurse 
@@ -358,7 +365,7 @@ sub create_rt_user {
             return;
         } else {
             if ($args{import}) {
-                my ($val, $msg) = $user_obj->Create( %$user, Privileged => 0 );
+                my ($val, $msg) = $user_obj->Create( %$user, Privileged => $RT::LDAPCreatePrivileged ? 1 : 0 );
 
                 unless ($val) {
                     $self->_error("couldn't create user_obj for $user->{Name}: $msg");
@@ -559,6 +566,10 @@ sub import_groups {
             $self->_warn("No Name for group, skipping ".Dumper $group);
             next;
         }
+        if ( $group->{Name} =~ /^[0-9]+$/) {
+            $self->_warn("Skipping group '$group->{Name}', as it is numeric");
+            next;
+        }
         $self->_import_group( %args, group => $group, ldap_entry => $entry );
         $done++;
         $self->_debug("Imported $done/$count groups");
@@ -600,9 +611,9 @@ sub _import_group {
     my $ldap_entry = $args{ldap_entry};
 
     $self->_debug("Processing group $group->{Name}");
-    my $group_obj = $self->create_rt_group( %args, group => $group );
+    my ($group_obj, $created) = $self->create_rt_group( %args, group => $group );
     return if $args{import} and not $group_obj;
-    $self->add_group_members( %args, name => $group->{Name}, group => $group_obj, ldap_entry => $ldap_entry );
+    $self->add_group_members( %args, name => $group->{Name}, group => $group_obj, ldap_entry => $ldap_entry, new => $created );
     return;
 }
 
@@ -629,10 +640,10 @@ sub create_rt_group {
     my $group_obj = RT::Group->new($RT::SystemUser);
     $group_obj->LoadUserDefinedGroup( $group->{Name} );
 
+    my $created;
     if ($group_obj->Id) {
-        my $message = "Group $group->{Name} already exists as ".$group_obj->Id;
         if ($args{import}) {
-            $self->_debug("$message, updating their data");
+            $self->_debug("Group $group->{Name} already exists as ".$group_obj->Id.", updating their data");
             my @results = $group_obj->Update( ARGSRef => $group, AttributesRef => [keys %$group] );
             $self->_debug(join("\n",@results)||'no change');
         } else {
@@ -651,6 +662,7 @@ sub create_rt_group {
                 $self->_error("couldn't create group_obj for $group->{Name}: $msg");
                 return;
             }
+            $created = $val;
             $self->_debug("Created group for $group->{Name} with id ".$group_obj->Id);
         } else {
             print "Found new group $group->{Name} to create in RT\n";
@@ -662,7 +674,7 @@ sub create_rt_group {
     unless ($group_obj->Id) {
         $self->_error("We couldn't find or create $group->{Name}. This should never happen");
     }
-    return $group_obj;
+    return ($group_obj, $created);
 
 }
 
@@ -692,11 +704,11 @@ sub add_group_members {
         return;
     }
 
-    my $rt_group_members = {};
-    if ($args{group}) {
+    my %rt_group_members;
+    if ($args{group} and not $args{new}) {
         my $user_members = $group->UserMembersObj( Recursively => 0);
         while ( my $member = $user_members->Next ) {
-            $rt_group_members->{$member->Name}++;
+            $rt_group_members{$member->Name} = $member;
         }
     } elsif (not $args{import}) {
         $self->_debug("No group in RT, would create with members:");
@@ -720,7 +732,7 @@ sub add_group_members {
             my $ldap_user = $ldap_users->shift_entry;
             $dnlist->{lc $member} = $username = $ldap_user->get_value($RT::LDAPMapping->{Name});
         }
-        if ( delete $rt_group_members->{$username} ) {
+        if ( delete $rt_group_members{$username} ) {
             $self->_debug("\t$username\tin RT and LDAP");
             next;
         }
@@ -739,17 +751,11 @@ sub add_group_members {
         }
     }
 
-    for my $username (sort keys %$rt_group_members) {
+    for my $username (sort keys %rt_group_members) {
         $self->_debug("\t$username\tin RT, not in LDAP, removing");
         next unless $args{import};
 
-        my $rt_user = RT::User->new($RT::SystemUser);
-        my ($res,$msg) = $rt_user->Load( $username );
-        unless ($res) {
-            $self->_warn("Unable to load $username: $msg");
-            next;
-        }
-        ($res,$msg) = $group->DeleteMember($rt_user->PrincipalObj->Id);
+        my ($res,$msg) = $group->DeleteMember($rt_group_members{$username}->PrincipalObj->Id);
         unless ($res) {
             $self->_warn("Failed to remove $username to $groupname: $msg");
         }
