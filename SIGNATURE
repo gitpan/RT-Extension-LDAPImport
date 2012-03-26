@@ -14,14 +14,14 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 d6d8035d121fafb2efdef25e2e381ad99e58d899 Changes
+SHA1 c2f88cd72b01fd62899b68c85f5907400028cb6f Changes
 SHA1 b92dc35693c93036ce43b7c57cf8ee7afc239927 INSTALL.SKIP
 SHA1 eb96b83690428a2cc38af4b8e263a1e2e47c33f1 MANIFEST
 SHA1 a86273ad1988d2a786d8a7e291a8e8b9344cdee3 MANIFEST.SKIP
-SHA1 8a9ce867664bdb9e65abf23c31b4174e3ae3dfa8 META.yml
+SHA1 4b98aac1899abb8124446c845e7d78f5b713a124 META.yml
 SHA1 9df727e8d34acba578b48b9afbb1201e9cd5b54e Makefile.PL
 SHA1 1b3eeb87c0d9a377b591361d275ece5387a1bbf2 README
-SHA1 37b9110ea441200a58a75234fa121c640ee18e55 bin/rtldapimport.in
+SHA1 b0889c1fbda7dc3187ce5fa2f56a28cbc007d0e2 bin/rtldapimport.in
 SHA1 517832230e29ff1d48b465a5605d242dbb27f358 inc/Module/AutoInstall.pm
 SHA1 7ba8556ded0e1b8465b2ebe703e073b416d454d7 inc/Module/Install.pm
 SHA1 5580f47c04e225825aa16235c63d57028251f76f inc/Module/Install/AutoInstall.pm
@@ -35,7 +35,7 @@ SHA1 086821cf681da29d7a7e94e8a6fe6cce7e14f00f inc/Module/Install/RTx.pm
 SHA1 13c903897bad7f0fdd7871a4a0182ff62dfbefd5 inc/Module/Install/Substitute.pm
 SHA1 fe19e1641d3642424ba4088909e0f2e05747c76f inc/Module/Install/Win32.pm
 SHA1 b71a7355e7c74219f0d24aedf057121981ff0f95 inc/Module/Install/WriteAll.pm
-SHA1 0fe8c919114f42bbb35705c6eae0a09ffa2e484f lib/RT/Extension/LDAPImport.pm
+SHA1 9207a4fc18b4f2e2abe4c7e31fd11e1be52e89d9 lib/RT/Extension/LDAPImport.pm
 SHA1 ca16acd585a375f0a8f138e18ccb10bf17df9697 t/00.load.t
 SHA1 8459087323a44e0f6b97a54f2c2387c4011fee23 t/group-import.t
 SHA1 fb5f010101d5901f0e1dd9ac30e841f40324b887 t/lib/RT/Extension/LDAPImport/Test.pm.in
@@ -46,7 +46,7 @@ SHA1 e9adee2a6b7703dc839a82fef1e0d89ad55a39f2 t/user-import.t
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.11 (GNU/Linux)
 
-iD8DBQFPRX55Hdv9ZfNcOAcRAlvtAKCMUUL8Hyw2+uKltcDjWGZ01/9sEgCgn9RO
-yauW9qqKK41zSctCDyGZZ6E=
-=mvbB
+iD8DBQFPcJZ+Hdv9ZfNcOAcRAi2VAJ4zWKkM/2hUoGLRGUXEdeJk9eeG2gCfaqoy
+r4Vbbht4xaFXvh6CiPGD+uI=
+=0eZB
 -----END PGP SIGNATURE-----
