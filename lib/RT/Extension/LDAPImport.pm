@@ -1,7 +1,6 @@
 package RT::Extension::LDAPImport;
 
-# XXX TODO: For historical reasons, this should become 0.33 after 0.32_xx dev releases are done.
-our $VERSION = '0.32_05';
+our $VERSION = '0.33';
 
 use warnings;
 use strict;
@@ -435,7 +434,7 @@ sub import_users {
             next;
         }
         if ( $user->{Name} =~ /^[0-9]+$/) {
-            $self->_warn("Skipping user '$user->{Name}', as it is numeric");
+            $self->_debug("Skipping user '$user->{Name}', as it is numeric");
             next;
         }
         $self->_import_user( user => $user, ldap_entry => $entry, import => $args{import} );
@@ -876,7 +875,13 @@ sub update_object_custom_field_values {
                      map { scalar $args{ldap_entry}->get_value($_) }
                          @attributes;
 
-        if (($obj->FirstCustomFieldValue($cf_name) || '') eq ($value || '')) {
+        my $current = $obj->FirstCustomFieldValue($cf_name);
+
+        if (not defined $current and not defined $value) {
+            $self->_debug($obj->Name . ": Skipping '$cf_name'.  No value in RT or LDAP.");
+            next;
+        }
+        elsif (defined $current and defined $value and $current eq $value) {
             $self->_debug($obj->Name . ": Value '$value' is already set for '$cf_name'");
             next;
         }
@@ -928,7 +933,7 @@ sub import_groups {
             next;
         }
         if ( $group->{Name} =~ /^[0-9]+$/) {
-            $self->_warn("Skipping group '$group->{Name}', as it is numeric");
+            $self->_debug("Skipping group '$group->{Name}', as it is numeric");
             next;
         }
         $self->_import_group( %args, group => $group, ldap_entry => $entry );
@@ -1257,7 +1262,7 @@ Kevin Falcone  C<< <falcone@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright (c) 2007, Best Practical Solutions, LLC.  All rights reserved.
+Copyright (c) 2007-2012, Best Practical Solutions, LLC.  All rights reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.
