@@ -1,0 +1,59 @@
+This file contains message digests of all files listed in MANIFEST,
+signed via the Module::Signature module, version 0.73.
+
+To verify the content in this distribution, first make sure you have
+Module::Signature installed, then type:
+
+    % cpansign -v
+
+It will check each file's integrity, as well as the signature's
+validity.  If "==> Signature verified OK! <==" is not displayed,
+the distribution may already have been compromised, and you should
+not run its Makefile.PL or Build.PL.
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+SHA1 85335b7be254447912a42f25485356c2182a2175 Changes
+SHA1 aa6f90a7f758d536fae48309ab17db0ab73d4d76 INSTALL
+SHA1 b92dc35693c93036ce43b7c57cf8ee7afc239927 INSTALL.SKIP
+SHA1 82502726ac9b91f7683d16e8118ca589f2cb52b2 MANIFEST
+SHA1 34f2740f1551380ad63bb2ed3cfc91544db5312b MANIFEST.SKIP
+SHA1 f903a5d5110fd18a22c25dc9839a7954d8f372a8 META.yml
+SHA1 974a42649b758f9b9465d4a51a4f1ce5b0537cd8 Makefile.PL
+SHA1 e1fed5232376b81bb2adf2f680440bc98e41e49e README
+SHA1 f235ec747a674715165c668b6fa010920828525f bin/rtldapimport.in
+SHA1 06c410f05488c1612ed66b06d3a86b2580581e4a inc/Module/AutoInstall.pm
+SHA1 8a924add836b60fb23b25c8506d45945e02f42f4 inc/Module/Install.pm
+SHA1 d001b4b9a48395a8c4134b234a0e1789138427c5 inc/Module/Install/AuthorTests.pm
+SHA1 61ab1dd37e33ddbe155907ce51df8a3e56ac8bbf inc/Module/Install/AutoInstall.pm
+SHA1 2d0fad3bf255f8c1e7e1e34eafccc4f595603ddc inc/Module/Install/Base.pm
+SHA1 f0e01fff7d73cd145fbf22331579918d4628ddb0 inc/Module/Install/Can.pm
+SHA1 7328966e4fda0c8451a6d3850704da0b84ac1540 inc/Module/Install/Fetch.pm
+SHA1 66d3d335a03492583a3be121a7d888f63f08412c inc/Module/Install/Include.pm
+SHA1 b62ca5e2d58fa66766ccf4d64574f9e1a2250b34 inc/Module/Install/Makefile.pm
+SHA1 1aa925be410bb3bfcd84a16985921f66073cc1d2 inc/Module/Install/Metadata.pm
+SHA1 921e21851a8a1f28ba1c11c3003e2f407e2e4f44 inc/Module/Install/RTx.pm
+SHA1 dc94326a076aca41452c1d65bf52a255feeb9ef7 inc/Module/Install/ReadmeFromPod.pm
+SHA1 13c903897bad7f0fdd7871a4a0182ff62dfbefd5 inc/Module/Install/Substitute.pm
+SHA1 e4196994fa75e98bdfa2be0bdeeffef66de88171 inc/Module/Install/Win32.pm
+SHA1 c3a6d0d5b84feb3280622e9599e86247d58b0d18 inc/Module/Install/WriteAll.pm
+SHA1 60e302dfe2e23c579589021d3d5e5f7a6465140d lib/RT/Extension/LDAPImport.pm
+SHA1 ca16acd585a375f0a8f138e18ccb10bf17df9697 xt/00.load.t
+SHA1 5a8d65dbc59ad1fdca7282f3b89b915f869b718a xt/group-callbacks.t
+SHA1 da0ff9496691aae01ade81b0438850d71f55bf06 xt/group-import.t
+SHA1 4c1a0025cc7dfd91730ad3fb8c873b6d01376d20 xt/group-rename.t
+SHA1 fb5f010101d5901f0e1dd9ac30e841f40324b887 xt/lib/RT/Extension/LDAPImport/Test.pm.in
+SHA1 6da39b48ce64b584e4c3274bff96fc76ff484820 xt/pod-coverage.t
+SHA1 0190346d7072d458c8a10a45c19f86db641dcc48 xt/pod.t
+SHA1 3f84d7bd421863e26e4450e8393309059ca9a5c4 xt/user-import-cfs.t
+SHA1 d865416d04331c3e34b64501851fb022a29ed70e xt/user-import-privileged.t
+SHA1 16d08ee99c588fccd73230965c91813354e0c10e xt/user-import.t
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.12 (Darwin)
+Comment: GPGTools - http://gpgtools.org
+
+iEYEARECAAYFAlIzH6gACgkQ0+gKWp5CJQrBbQCfQQu+J7mdEqg0/NlOOgK2zMOP
+3gwAoOovt/1j7yd4KVekiv3BwSnnTdfi
+=FUJO
+-----END PGP SIGNATURE-----
