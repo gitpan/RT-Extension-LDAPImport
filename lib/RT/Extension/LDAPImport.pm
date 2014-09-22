@@ -1,6 +1,6 @@
 package RT::Extension::LDAPImport;
 
-our $VERSION = '0.35';
+our $VERSION = '0.36';
 
 use warnings;
 use strict;
@@ -34,7 +34,7 @@ In C<RT_SiteConfig.pm>:
     # Add to any existing plugins
     Set(@Plugins, qw(RT::Extension::LDAPImport));
     
-    # If you want to sync Groups RT <-> LDAP
+    # If you want to sync Groups from LDAP into RT
     
     Set($LDAPGroupBase, 'ou=Groups,o=Our Place');
     Set($LDAPGroupFilter, '(&(cn = Groups))');
@@ -70,7 +70,7 @@ If you are using RT 4.2 or greater, add this line:
 
     Plugin('RT::Extension::LDAPImport');
 
-For earlier releases of RT 4, add this line:
+For RT 4.0, add this line:
 
     Set(@Plugins, qw(RT::Extension::LDAPImport));
 
@@ -280,6 +280,22 @@ up with two groups in RT.
 You can provide a C<Description> key which will be added as the group
 description in RT. The default description is 'Imported from LDAP'.
 
+=item C<< Set($LDAPImportGroupMembers, 1); >>
+
+When disabled, the default, LDAP group import expects that all LDAP members
+already exist as RT users.  Often the user import stage, which happens before
+groups, is used to create and/or update group members by using an
+C<$LDAPFilter> which includes a C<memberOf> attribute.
+
+When enabled, by setting to C<1>, LDAP group members are explicitly imported
+before membership is synced with RT.  This enables groups-only configurations
+to also import group members without specifying a potentially long and complex
+C<$LDAPFilter> using C<memberOf>.  It's particularly handy when C<memberOf>
+isn't available on user entries.
+
+Note that C<$LDAPFilter> still applies when this option is enabled, so some
+group members may be filtered out from the import.
+
 =item C<< Set($LDAPSizeLimit, 1000); >>
 
 You can set this value if your LDAP server has result size limits.
@@ -332,9 +348,7 @@ create a lot of users or groups in your RT instance.
 
 =head1 RT Versions
 
-The importer works with RT 3.8 and newer including RT 4.
-
-It may work with RT 3.6.
+The importer works with RT 4.0 and above.
 
 =head1 LDAP Filters
 
@@ -437,6 +451,7 @@ sub _run_search {
     my %search = (
         base    => $args{base},
         filter  => $args{filter},
+        scope   => ($args{scope} || 'sub'),
     );
     my (@results, $page, $cookie);
 
@@ -526,9 +541,19 @@ sub import_users {
     my $self = shift;
     my %args = @_;
 
+    $self->_users({});
+
     my @results = $self->run_user_search;
-    unless ( @results ) {
-        $self->_debug("No results found, no import");
+    return $self->_import_users( %args, users => \@results );
+}
+
+sub _import_users {
+    my $self = shift;
+    my %args = @_;
+    my $users = $args{users};
+
+    unless ( @$users ) {
+        $self->_debug("No users found, no import");
         $self->disconnect_ldap;
         return;
     }
@@ -536,10 +561,8 @@ sub import_users {
     my $mapping = $RT::LDAPMapping;
     return unless $self->_check_ldap_mapping( mapping => $mapping );
 
-    $self->_users({});
-
-    my $done = 0; my $count = scalar @results;
-    while (my $entry = shift @results) {
+    my $done = 0; my $count = scalar @$users;
+    while (my $entry = shift @$users) {
         my $user = $self->_build_user_object( ldap_entry => $entry );
         $self->_import_user( user => $user, ldap_entry => $entry, import => $args{import} );
         $done++;
@@ -1032,25 +1055,27 @@ sub update_object_custom_field_values {
         mapping => $RT::LDAPMapping,
     );
 
-    foreach my $rtfield ( keys %$data ) {
+    foreach my $rtfield ( sort keys %$data ) {
         # XXX TODO: accept GroupCF when we call this from group_import too
         next unless $rtfield =~ /^UserCF\.(.+)$/i;
         my $cf_name = $1;
-        # XXX TODO: value can not be undefined, but empty string
         my $value = $data->{$rtfield};
+        $value = '' unless defined $value;
 
         my $current = $obj->FirstCustomFieldValue($cf_name);
+        $current = '' unless defined $current;
 
-        if (not defined $current and not defined $value) {
-            $self->_debug($obj->Name . ": Skipping '$cf_name'.  No value in RT or LDAP.");
+        if (not length $current and not length $value) {
+            $self->_debug("\tCF.$cf_name\tskipping, no value in RT and LDAP");
             next;
         }
-        elsif (defined $current and defined $value and $current eq $value) {
-            $self->_debug($obj->Name . ": Value '$value' is already set for '$cf_name'");
+        elsif ($current eq $value) {
+            $self->_debug("\tCF.$cf_name\tunchanged => $value");
             next;
         }
 
-        $self->_debug($obj->Name . ": Adding object value '$value' for '$cf_name'");
+        $current = 'unset' unless length $current;
+        $self->_debug("\tCF.$cf_name\t$current => $value");
         next unless $args{import};
 
         my ($ok, $msg) = $obj->AddCustomFieldValue( Field => $cf_name, Value => $value );
@@ -1361,9 +1386,44 @@ sub add_group_members {
         return;
     }
 
+    if ($RT::LDAPImportGroupMembers) {
+        $self->_debug("Importing members of group $groupname");
+        my @entries;
+        my $attr = lc($RT::LDAPGroupMapping->{Member_Attr_Value} || 'dn');
+
+        # Lookup each DN's full entry, or...
+        if ($attr eq 'dn') {
+            @entries = grep defined, map {
+                my @results = $self->_run_search(
+                    scope   => 'base',
+                    base    => $_,
+                    filter  => $RT::LDAPFilter,
+                );
+                $results[0]
+            } @$members;
+        }
+        # ...or find all the entries in a single search by attribute.
+        else {
+            # I wonder if this will run into filter length limits? -trs, 22 Jan 2014
+            my $members = join "", map { "($attr=" . escape_filter_value($_) . ")" } @$members;
+            @entries = $self->_run_search(
+                base   => $RT::LDAPBase,
+                filter => "(&$RT::LDAPFilter(|$members))",
+            );
+        }
+        $self->_import_users(
+            import  => $args{import},
+            users   => \@entries,
+        ) or $self->_debug("Importing group members failed");
+    }
+
     my %rt_group_members;
     if ($args{group} and not $args{new}) {
         my $user_members = $group->UserMembersObj( Recursively => 0);
+
+        # find members who are Disabled too so we don't try to add them below
+        $user_members->FindAllRows;
+
         while ( my $member = $user_members->Next ) {
             $rt_group_members{$member->Name} = $member;
         }
@@ -1379,11 +1439,13 @@ sub add_group_members {
         } else {
             my $attr    = lc($RT::LDAPGroupMapping->{Member_Attr_Value} || 'dn');
             my $base    = $attr eq 'dn' ? $member : $RT::LDAPBase;
+            my $scope   = $attr eq 'dn' ? 'base'  : 'sub';
             my $filter  = $attr eq 'dn'
                             ? $RT::LDAPFilter
                             : "(&$RT::LDAPFilter($attr=" . escape_filter_value($member) . "))";
             my @results = $self->_run_search(
                 base   => $base,
+                scope  => $scope,
                 filter => $filter,
             );
             unless ( @results ) {
@@ -1486,6 +1548,7 @@ sub disconnect_ldap {
 
     $ldap->unbind;
     $ldap->disconnect;
+    $self->_ldap(undef);
     return;
 }
 
@@ -1525,47 +1588,27 @@ sub _warn {
     print STDERR $msg, "\n";
 }
 
-=head1 BUGS AND LIMITATIONS
-
-Please report any bugs or feature requests to
-C<bug-rt-extension-ldapimport@rt.cpan.org>, or through the web interface at
-L<http://rt.cpan.org>.
-
 =head1 AUTHOR
 
-Kevin Falcone  C<< <falcone@bestpractical.com> >>
+Best Practical Solutions, LLC E<lt>modules@bestpractical.comE<gt>
 
+=head1 BUGS
 
-=head1 LICENCE AND COPYRIGHT
+All bugs should be reported via email to
 
-Copyright (c) 2007-2013, Best Practical Solutions, LLC.  All rights reserved.
+    L<bug-RT-Extension-LDAPImport@rt.cpan.org|mailto:bug-RT-Extension-LDAPImport@rt.cpan.org>
 
-This module is free software; you can redistribute it and/or
-modify it under the same terms as Perl itself. See L<perlartistic>.
+or via the web at
 
+    L<rt.cpan.org|http://rt.cpan.org/Public/Dist/Display.html?Name=RT-Extension-LDAPImport>.
 
-=head1 DISCLAIMER OF WARRANTY
+=head1 LICENSE AND COPYRIGHT
 
-BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
-FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
-OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
-PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
-EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
-ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
-YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
-NECESSARY SERVICING, REPAIR, OR CORRECTION.
+This software is Copyright (c) 2007-2014 by Best Practical Solutions, LLC
 
-IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
-WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
-REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
-LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
-OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
-THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
-RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
-FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
-SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
-SUCH DAMAGES.
+This is free software, licensed under:
+
+  The GNU General Public License, Version 2, June 1991
 
 =cut
 
